@@ -7,19 +7,17 @@ bl_info = {
     "author" : "",
     "description" : "",
     "blender" : (5, 0, 1),
-    "version" : (1, 1, 0),
+    "version" : (1, 2, 0),
     "location" : "View3D > Sidebar > BakeManagerTool",
     "warning" : "",
     "category" : "Baking"
 }
-
 
 # ─────────────────────────────────────────────
 #  Property Group
 # ─────────────────────────────────────────────
 
 class BakeManagerToolProperties(PropertyGroup):
-    # 1. Addon-defined custom frame range
     custom_frame_start: IntProperty(
         name="Start Frame",
         description="Bake start frame (addon custom value)",
@@ -33,17 +31,22 @@ class BakeManagerToolProperties(PropertyGroup):
         min=0
     )
 
-    # 3. Checkbox to choose whether to use the scene frame range
     use_scene_frame_range: BoolProperty(
         name="Use Scene Frame Range",
         description="When enabled, bakes using the current scene Start/End Frame values",
         default=True
     )
 
-    # 5. Select which cache types to clear (multiple selection supported)
     clear_cloth: BoolProperty(name="Cloth", default=True)
     clear_softbody: BoolProperty(name="Soft Body", default=True)
     clear_particle: BoolProperty(name="Particle", default=True)
+
+    # 새로 추가된 프레임 수치 표시 토글 옵션
+    show_modifier_frame_range: BoolProperty(
+        name="Show Frame Range Details",
+        description="Toggle display of start/end frames for each physics modifier",
+        default=False
+    )
 
 
 # ─────────────────────────────────────────────
@@ -72,22 +75,18 @@ class VIEW3D_PT_CacheBakeButton(MainPanel, Panel):
         box = layout.box()
         box.label(text="Frame Range", icon='TIME')
 
-        # 3. Checkbox: use scene frame range or addon custom values
         box.prop(props, "use_scene_frame_range")
 
         if props.use_scene_frame_range:
-            # Show scene values as read-only
             row = box.row()
             row.enabled = False
             row.prop(context.scene, "frame_start", text="Start")
             row.prop(context.scene, "frame_end", text="End")
         else:
-            # 1. Input addon custom frame range values
             row = box.row()
             row.prop(props, "custom_frame_start", text="Start")
             row.prop(props, "custom_frame_end", text="End")
 
-        # 2. Button to fetch frame range from current scene
         row = box.row()
         row.operator("script.fetch_scene_frame_range", icon='IMPORT')
 
@@ -101,7 +100,6 @@ class VIEW3D_PT_CacheBakeButton(MainPanel, Panel):
         box2 = layout.box()
         box2.label(text="Clear All Cache", icon='TRASH')
 
-        # 5. Select cache types to clear
         row = box2.row(align=True)
         row.prop(props, "clear_cloth", toggle=True)
         row.prop(props, "clear_softbody", toggle=True)
@@ -120,52 +118,92 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
+        props = context.scene.bake_help_tool
         cloth_softbody_objects_info = self.get_cloth_softbody_objects_info()
 
-        bakeText = "O"
-        notBakeText = "X"
+        # 프레임 수치 표시 토글 UI
+        layout.prop(props, "show_modifier_frame_range", toggle=True, icon='PREFERENCES')
+        layout.separator()
 
         if cloth_softbody_objects_info:
             for obj_info in cloth_softbody_objects_info:
                 obj_name = obj_info['object'].name
                 box = layout.box()
-                box.label(text=f"Object: {obj_name}", icon='OBJECT_DATA')
+
+                # Object Label & Select Button
+                row = box.row()
+                row.label(text=f"Object: {obj_name}", icon='OBJECT_DATA')
+                select_op = row.operator("script.select_object", text="Select", icon='RESTRICT_SELECT_OFF')
+                select_op.obj_name = obj_name
 
                 # Cloth
                 if obj_info['cloth_modifier']:
                     mod = obj_info['cloth_modifier']
-                    is_baked = mod.point_cache.is_baked
+                    cache = mod.point_cache
+                    is_baked = cache.is_baked
                     row = box.row(align=True)
-                    row.label(text=f"Cloth: {'O' if is_baked else 'X'}")
-                    # 4. Individual Clear button
-                    op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    op.obj_name = obj_name
-                    op.modifier_type = 'CLOTH'
-                    op.particle_system_name = ""
+
+                    # 텍스트와 아이콘 동적 할당
+                    label_text = "Cloth"
+                    if props.show_modifier_frame_range:
+                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
+                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
+                    bake_op.obj_name = obj_name
+                    bake_op.modifier_type = 'CLOTH'
+                    bake_op.particle_system_name = ""
+
+                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
+                    clear_op.obj_name = obj_name
+                    clear_op.modifier_type = 'CLOTH'
+                    clear_op.particle_system_name = ""
 
                 # Soft Body
                 if obj_info['softbody_modifier']:
                     mod = obj_info['softbody_modifier']
-                    is_baked = mod.point_cache.is_baked
+                    cache = mod.point_cache
+                    is_baked = cache.is_baked
                     row = box.row(align=True)
-                    row.label(text=f"Soft Body: {'O' if is_baked else 'X'}")
-                    # 4. Individual Clear button
-                    op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    op.obj_name = obj_name
-                    op.modifier_type = 'SOFT_BODY'
-                    op.particle_system_name = ""
+
+                    # 텍스트와 아이콘 동적 할당
+                    label_text = "Soft Body"
+                    if props.show_modifier_frame_range:
+                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
+                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
+                    bake_op.obj_name = obj_name
+                    bake_op.modifier_type = 'SOFT_BODY'
+                    bake_op.particle_system_name = ""
+
+                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
+                    clear_op.obj_name = obj_name
+                    clear_op.modifier_type = 'SOFT_BODY'
+                    clear_op.particle_system_name = ""
 
                 # Particle
                 for particle_modifier in obj_info['particle_modifier']:
                     ps = particle_modifier.particle_system
-                    is_baked = ps.point_cache.is_baked
+                    cache = ps.point_cache
+                    is_baked = cache.is_baked
                     row = box.row(align=True)
-                    row.label(text=f"{ps.name}: {'O' if is_baked else 'X'}")
-                    # 4. Individual Clear button
-                    op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    op.obj_name = obj_name
-                    op.modifier_type = 'PARTICLE_SYSTEM'
-                    op.particle_system_name = ps.name
+
+                    # 텍스트와 아이콘 동적 할당
+                    label_text = ps.name
+                    if props.show_modifier_frame_range:
+                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
+                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
+                    bake_op.obj_name = obj_name
+                    bake_op.modifier_type = 'PARTICLE_SYSTEM'
+                    bake_op.particle_system_name = ps.name
+
+                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
+                    clear_op.obj_name = obj_name
+                    clear_op.modifier_type = 'PARTICLE_SYSTEM'
+                    clear_op.particle_system_name = ps.name
         else:
             layout.label(text="No Cloth / Soft Body / Particle objects found.")
 
@@ -198,7 +236,6 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
 # ─────────────────────────────────────────────
 
 def get_frame_range(context):
-    """Returns the frame_start / frame_end to use based on addon props settings"""
     props = context.scene.bake_help_tool
     if props.use_scene_frame_range:
         return context.scene.frame_start, context.scene.frame_end
@@ -206,8 +243,25 @@ def get_frame_range(context):
         return props.custom_frame_start, props.custom_frame_end
 
 
+class SCRIPT_OT_SelectObject(Operator):
+    bl_idname = "script.select_object"
+    bl_label = "Select Object"
+
+    obj_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.obj_name)
+        if obj:
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+            return {'FINISHED'}
+
+        self.report({'WARNING'}, f"Object '{self.obj_name}' not found.")
+        return {'CANCELLED'}
+
+
 class SCRIPT_OT_FetchSceneFrameRange(Operator):
-    """Copies the current scene's Start/End Frame values into the addon custom fields"""
     bl_idname = "script.fetch_scene_frame_range"
     bl_label = "Fetch from Scene"
 
@@ -220,7 +274,6 @@ class SCRIPT_OT_FetchSceneFrameRange(Operator):
 
 
 class SCRIPT_OT_BakeFrameSynchronization(Operator):
-    """Synchronizes the cache frame range of all Cloth / Soft Body modifiers"""
     bl_idname = "script.bake_frame_synchronization"
     bl_label = "Bake Frame Synchronization"
 
@@ -236,7 +289,6 @@ class SCRIPT_OT_BakeFrameSynchronization(Operator):
 
 
 class SCRIPT_OT_ClearAllClothSoftbodyCache(Operator):
-    """Clears all caches of the selected types"""
     bl_idname = "script.clear_all_cloth_softbody_cache"
     bl_label = "Clear Selected Cache"
 
@@ -277,13 +329,12 @@ class SCRIPT_OT_ClearAllClothSoftbodyCache(Operator):
         return {'FINISHED'}
 
 
-class SCRIPT_OT_ClearSingleCache(Operator):
-    """Clears the cache of a specific modifier on a specific object"""
-    bl_idname = "script.clear_single_cache"
-    bl_label = "Clear Cache"
+class SCRIPT_OT_BakeSingleCache(Operator):
+    bl_idname = "script.bake_single_cache"
+    bl_label = "Bake Cache"
 
     obj_name: bpy.props.StringProperty()
-    modifier_type: bpy.props.StringProperty()  # 'CLOTH', 'SOFT_BODY', 'PARTICLE_SYSTEM'
+    modifier_type: bpy.props.StringProperty()
     particle_system_name: bpy.props.StringProperty(default="")
 
     def execute(self, context):
@@ -303,7 +354,44 @@ class SCRIPT_OT_ClearSingleCache(Operator):
             else:
                 point_cache = modifier.point_cache
 
-            # Clear the cache
+            override = context.copy()
+            override['active_object'] = obj
+            override['point_cache'] = point_cache
+            with context.temp_override(**override):
+                bpy.ops.ptcache.bake(bake=True)
+
+            self.report({'INFO'}, f"'{self.obj_name}' - {self.modifier_type} cache baked.")
+            return {'FINISHED'}
+
+        self.report({'WARNING'}, "Modifier not found.")
+        return {'CANCELLED'}
+
+
+class SCRIPT_OT_ClearSingleCache(Operator):
+    bl_idname = "script.clear_single_cache"
+    bl_label = "Clear Cache"
+
+    obj_name: bpy.props.StringProperty()
+    modifier_type: bpy.props.StringProperty()
+    particle_system_name: bpy.props.StringProperty(default="")
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.obj_name)
+        if not obj:
+            self.report({'WARNING'}, f"Object '{self.obj_name}' not found.")
+            return {'CANCELLED'}
+
+        for modifier in obj.modifiers:
+            if modifier.type != self.modifier_type:
+                continue
+
+            if self.modifier_type == 'PARTICLE_SYSTEM':
+                if modifier.particle_system.name != self.particle_system_name:
+                    continue
+                point_cache = modifier.particle_system.point_cache
+            else:
+                point_cache = modifier.point_cache
+
             override = context.copy()
             override['active_object'] = obj
             override['point_cache'] = point_cache
@@ -325,9 +413,11 @@ classes = [
     BakeManagerToolProperties,
     VIEW3D_PT_CacheBakeButton,
     VIEW3D_PT_CacheBakeStatusPanel,
+    SCRIPT_OT_SelectObject,
     SCRIPT_OT_FetchSceneFrameRange,
     SCRIPT_OT_BakeFrameSynchronization,
     SCRIPT_OT_ClearAllClothSoftbodyCache,
+    SCRIPT_OT_BakeSingleCache,
     SCRIPT_OT_ClearSingleCache,
 ]
 
