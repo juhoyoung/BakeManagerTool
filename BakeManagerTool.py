@@ -7,7 +7,7 @@ bl_info = {
     "author" : "",
     "description" : "",
     "blender" : (5, 0, 1),
-    "version" : (1, 2, 0),
+    "version" : (1, 4, 0),
     "location" : "View3D > Sidebar > BakeManagerTool",
     "warning" : "",
     "category" : "Baking"
@@ -119,14 +119,14 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
     def draw(self, context):
         layout = self.layout
         props = context.scene.bake_help_tool
-        cloth_softbody_objects_info = self.get_cloth_softbody_objects_info()
+        objects_info = self.get_physics_objects_info()
 
         # Toggle UI for displaying frame numerical values
         layout.prop(props, "show_modifier_frame_range", toggle=True, icon='PREFERENCES')
         layout.separator()
 
-        if cloth_softbody_objects_info:
-            for obj_info in cloth_softbody_objects_info:
+        if objects_info:
+            for obj_info in objects_info:
                 obj_name = obj_info['object'].name
                 box = layout.box()
 
@@ -136,6 +136,16 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                 select_op = row.operator("script.select_object", text="Select", icon='RESTRICT_SELECT_OFF')
                 select_op.obj_name = obj_name
 
+                # Collision (New Section)
+                if obj_info['collision_modifier']:
+                    mod = obj_info['collision_modifier']
+                    row = box.row(align=True)
+                    row.label(text="Collision", icon='MOD_PHYSICS')
+
+                    # Add toggle buttons only (No Bake/Clear needed)
+                    icon_res = 'HIDE_OFF' if mod.settings.use else 'HIDE_ON'
+                    row.prop(mod.settings, "use", text="", icon=icon_res, toggle=True)
+
                 # Cloth
                 if obj_info['cloth_modifier']:
                     mod = obj_info['cloth_modifier']
@@ -143,25 +153,21 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # Dynamically assign text and icon
                     label_text = "Cloth"
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
 
-                    # Add toggle buttons for Viewport and Render visibility
                     row.prop(mod, "show_viewport", text="")
                     row.prop(mod, "show_render", text="")
 
                     bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
                     bake_op.obj_name = obj_name
                     bake_op.modifier_type = 'CLOTH'
-                    bake_op.particle_system_name = ""
 
                     clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
                     clear_op.obj_name = obj_name
                     clear_op.modifier_type = 'CLOTH'
-                    clear_op.particle_system_name = ""
 
                 # Soft Body
                 if obj_info['softbody_modifier']:
@@ -170,25 +176,21 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # Dynamically assign text and icon
                     label_text = "Soft Body"
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
 
-                    # Add toggle buttons for Viewport and Render visibility
                     row.prop(mod, "show_viewport", text="")
                     row.prop(mod, "show_render", text="")
 
                     bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
                     bake_op.obj_name = obj_name
                     bake_op.modifier_type = 'SOFT_BODY'
-                    bake_op.particle_system_name = ""
 
                     clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
                     clear_op.obj_name = obj_name
                     clear_op.modifier_type = 'SOFT_BODY'
-                    clear_op.particle_system_name = ""
 
                 # Particle
                 for particle_modifier in obj_info['particle_modifier']:
@@ -197,13 +199,11 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # Dynamically assign text and icon
                     label_text = ps.name
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
 
-                    # Add toggle buttons for Viewport and Render visibility
                     row.prop(particle_modifier, "show_viewport", text="")
                     row.prop(particle_modifier, "show_render", text="")
 
@@ -217,30 +217,36 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     clear_op.modifier_type = 'PARTICLE_SYSTEM'
                     clear_op.particle_system_name = ps.name
         else:
-            layout.label(text="No Cloth / Soft Body / Particle objects found.")
+            layout.label(text="No Physics objects found.")
 
-    def get_cloth_softbody_objects_info(self):
-        cloth_softbody_objects_info = []
+    def get_physics_objects_info(self):
+        physics_objects_info = []
         for obj in bpy.data.objects:
             if obj.type == 'MESH' and obj.data:
-                cloth_modifier = None
-                softbody_modifier = None
-                particle_modifier = []
+                cloth_mod = None
+                softbody_mod = None
+                collision_mod = None
+                particle_mods = []
+
                 for modifier in obj.modifiers:
                     if modifier.type == 'CLOTH':
-                        cloth_modifier = modifier
+                        cloth_mod = modifier
                     elif modifier.type == 'SOFT_BODY':
-                        softbody_modifier = modifier
+                        softbody_mod = modifier
                     elif modifier.type == 'PARTICLE_SYSTEM':
-                        particle_modifier.append(modifier)
-                if cloth_modifier or softbody_modifier or particle_modifier:
-                    cloth_softbody_objects_info.append({
+                        particle_mods.append(modifier)
+                    elif modifier.type == 'COLLISION':
+                        collision_mod = modifier
+
+                if any([cloth_mod, softbody_mod, collision_mod, particle_mods]):
+                    physics_objects_info.append({
                         'object': obj,
-                        'cloth_modifier': cloth_modifier,
-                        'softbody_modifier': softbody_modifier,
-                        'particle_modifier': particle_modifier,
+                        'cloth_modifier': cloth_mod,
+                        'softbody_modifier': softbody_mod,
+                        'collision_modifier': collision_mod,
+                        'particle_modifier': particle_mods,
                     })
-        return cloth_softbody_objects_info
+        return physics_objects_info
 
 
 # ─────────────────────────────────────────────
