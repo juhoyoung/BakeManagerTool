@@ -127,23 +127,33 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
 
         if objects_info:
             for obj_info in objects_info:
-                obj_name = obj_info['object'].name
+                obj = obj_info['object']
+                obj_name = obj.name
                 box = layout.box()
 
-                # Object Label & Select Button
-                row = box.row()
+                # Object Label & Select Button + Visibility Toggles
+                row = box.row(align=True)
                 row.label(text=f"Object: {obj_name}", icon='OBJECT_DATA')
-                select_op = row.operator("script.select_object", text="Select", icon='RESTRICT_SELECT_OFF')
+
+                # --- Added Viewport/Render Toggle Icons ---
+                # Viewport visibility toggle
+                icon_view = 'HIDE_OFF' if not obj.hide_viewport else 'HIDE_ON'
+                row.prop(obj, "hide_viewport", text="", toggle=True)
+
+                # Render visibility toggle
+                icon_render = 'RESTRICT_RENDER_OFF' if not obj.hide_render else 'RESTRICT_RENDER_ON'
+                row.prop(obj, "hide_render", text="", toggle=True)
+
+                # Existing Select Button
+                select_op = row.operator("script.select_object", text="", icon='RESTRICT_SELECT_OFF')
                 select_op.obj_name = obj_name
 
-                # Collision (New Section)
+                # Collision
                 if obj_info['collision_modifier']:
                     mod = obj_info['collision_modifier']
                     row = box.row(align=True)
                     row.label(text="Collision", icon='MOD_PHYSICS')
-
-                    # Add toggle buttons only (No Bake/Clear needed)
-                    icon_res = 'HIDE_OFF' if mod.settings.use else 'HIDE_ON'
+                    icon_res = 'CHECKBOX_HLT' if mod.settings.use else 'CHECKBOX_DEHLT'
                     row.prop(mod.settings, "use", text="", icon=icon_res, toggle=True)
 
                 # Cloth
