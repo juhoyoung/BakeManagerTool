@@ -41,7 +41,7 @@ class BakeManagerToolProperties(PropertyGroup):
     clear_softbody: BoolProperty(name="Soft Body", default=True)
     clear_particle: BoolProperty(name="Particle", default=True)
 
-    # 새로 추가된 프레임 수치 표시 토글 옵션
+    # Toggle option for displaying frame range details
     show_modifier_frame_range: BoolProperty(
         name="Show Frame Range Details",
         description="Toggle display of start/end frames for each physics modifier",
@@ -121,7 +121,7 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
         props = context.scene.bake_help_tool
         cloth_softbody_objects_info = self.get_cloth_softbody_objects_info()
 
-        # 프레임 수치 표시 토글 UI
+        # Toggle UI for displaying frame numerical values
         layout.prop(props, "show_modifier_frame_range", toggle=True, icon='PREFERENCES')
         layout.separator()
 
@@ -143,11 +143,15 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # 텍스트와 아이콘 동적 할당
+                    # Dynamically assign text and icon
                     label_text = "Cloth"
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    # Add toggle buttons for Viewport and Render visibility
+                    row.prop(mod, "show_viewport", text="")
+                    row.prop(mod, "show_render", text="")
 
                     bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
                     bake_op.obj_name = obj_name
@@ -166,11 +170,15 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # 텍스트와 아이콘 동적 할당
+                    # Dynamically assign text and icon
                     label_text = "Soft Body"
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    # Add toggle buttons for Viewport and Render visibility
+                    row.prop(mod, "show_viewport", text="")
+                    row.prop(mod, "show_render", text="")
 
                     bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
                     bake_op.obj_name = obj_name
@@ -189,11 +197,15 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     is_baked = cache.is_baked
                     row = box.row(align=True)
 
-                    # 텍스트와 아이콘 동적 할당
+                    # Dynamically assign text and icon
                     label_text = ps.name
                     if props.show_modifier_frame_range:
                         label_text += f" ({cache.frame_start}~{cache.frame_end})"
                     row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
+
+                    # Add toggle buttons for Viewport and Render visibility
+                    row.prop(particle_modifier, "show_viewport", text="")
+                    row.prop(particle_modifier, "show_render", text="")
 
                     bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
                     bake_op.obj_name = obj_name
