@@ -7,10 +7,10 @@ bl_info = {
     "author" : "",
     "description" : "",
     "blender" : (5, 0, 1),
-    "version" : (1, 4, 0),
+    "version" : (1, 5, 0),
     "location" : "View3D > Sidebar > BakeManagerTool",
     "warning" : "",
-    "category" : "Baking"
+    "category" : "Physics"
 }
 
 # ─────────────────────────────────────────────
