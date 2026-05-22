@@ -4,7 +4,7 @@ from bpy.props import IntProperty, BoolProperty, PointerProperty
 
 bl_info = {
     "name" : "BakeManagerTool",
-    "author" : "",
+    "author" : "happy Blender 😒",
     "description" : "",
     "blender" : (5, 0, 1),
     "version" : (1, 5, 0),
