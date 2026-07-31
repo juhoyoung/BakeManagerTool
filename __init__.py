@@ -1,13 +1,13 @@
 import bpy
 from bpy.types import Operator, Panel, PropertyGroup
-from bpy.props import IntProperty, BoolProperty, PointerProperty
+from bpy.props import IntProperty, BoolProperty, EnumProperty, PointerProperty
 
 bl_info = {
     "name" : "BakeManagerTool",
     "author" : "hyeffect55",
     "description" : "",
     "blender" : (5, 0, 1),
-    "version" : (1, 5, 0),
+    "version" : (1, 6, 0),
     "location" : "View3D > Sidebar > BakeManagerTool",
     "warning" : "",
     "category" : "Physics"
@@ -46,6 +46,29 @@ class BakeManagerToolProperties(PropertyGroup):
         name="Show Frame Range Details",
         description="Toggle display of start/end frames for each physics modifier",
         default=False
+    )
+
+    status_filter: EnumProperty(
+        name="Physics Type",
+        description="Show only objects that use the selected physics type",
+        items=(
+            ('ALL', "All", "Show all supported physics types"),
+            ('CLOTH', "Cloth", "Show Cloth objects"),
+            ('SOFT_BODY', "Soft", "Show Soft Body objects"),
+            ('PARTICLE_SYSTEM', "Particle", "Show Particle System objects"),
+            ('COLLISION', "Collision", "Show Collision objects"),
+        ),
+        default='ALL'
+    )
+
+    all_view_mode: EnumProperty(
+        name="All View",
+        description="Choose how all physics objects are organized",
+        items=(
+            ('NAME', "Name", "Show all objects in alphabetical order"),
+            ('PHYSICS_GROUP', "Physics Groups", "Group objects by physics type"),
+        ),
+        default='NAME'
     )
 
 
@@ -119,14 +142,57 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
     def draw(self, context):
         layout = self.layout
         props = context.scene.bake_help_tool
-        objects_info = self.get_physics_objects_info()
+
+        layout.label(text="Filter by Physics Type", icon='FILTER')
+        layout.prop(props, "status_filter", expand=True)
+
+        if props.status_filter == 'ALL':
+            layout.label(text="All View", icon='SORTALPHA')
+            layout.prop(props, "all_view_mode", expand=True)
+
+        layout.separator()
 
         # Toggle UI for displaying frame numerical values
         layout.prop(props, "show_modifier_frame_range", toggle=True, icon='PREFERENCES')
         layout.separator()
 
+        if (
+            props.status_filter == 'ALL'
+            and props.all_view_mode == 'PHYSICS_GROUP'
+        ):
+            objects_info = []
+            all_objects_info = self.get_physics_objects_info()
+            physics_groups = (
+                ('CLOTH', "Cloth"),
+                ('SOFT_BODY', "Soft Body"),
+                ('PARTICLE_SYSTEM', "Particle"),
+                ('COLLISION', "Collision"),
+            )
+            for physics_type, group_label in physics_groups:
+                group_objects = [
+                    obj_info
+                    for obj_info in all_objects_info
+                    if self.matches_physics_filter(obj_info, physics_type)
+                ]
+                for index, obj_info in enumerate(group_objects):
+                    grouped_info = obj_info.copy()
+                    grouped_info['display_filter'] = physics_type
+                    grouped_info['group_label'] = group_label if index == 0 else ""
+                    objects_info.append(grouped_info)
+        else:
+            objects_info = self.get_physics_objects_info(props.status_filter)
+
         if objects_info:
             for obj_info in objects_info:
+                display_filter = obj_info.get(
+                    'display_filter',
+                    props.status_filter
+                )
+                group_label = obj_info.get('group_label')
+                if group_label:
+                    header = layout.row()
+                    header.label(text=group_label, icon='MOD_PHYSICS')
+
                 obj = obj_info['object']
                 obj_name = obj.name
                 box = layout.box()
@@ -138,18 +204,33 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                 # --- Added Viewport/Render Toggle Icons ---
                 # Viewport visibility toggle
                 icon_view = 'HIDE_OFF' if not obj.hide_viewport else 'HIDE_ON'
-                row.prop(obj, "hide_viewport", text="", toggle=True)
+                row.prop(
+                    obj,
+                    "hide_viewport",
+                    text="",
+                    icon=icon_view,
+                    toggle=True
+                )
 
                 # Render visibility toggle
                 icon_render = 'RESTRICT_RENDER_OFF' if not obj.hide_render else 'RESTRICT_RENDER_ON'
-                row.prop(obj, "hide_render", text="", toggle=True)
+                row.prop(
+                    obj,
+                    "hide_render",
+                    text="",
+                    icon=icon_render,
+                    toggle=True
+                )
 
                 # Existing Select Button
                 select_op = row.operator("script.select_object", text="", icon='RESTRICT_SELECT_OFF')
                 select_op.obj_name = obj_name
 
                 # Collision
-                if obj_info['collision_modifier']:
+                if (
+                    obj_info['collision_modifier']
+                    and display_filter in {'ALL', 'COLLISION'}
+                ):
                     mod = obj_info['collision_modifier']
                     row = box.row(align=True)
                     row.label(text="Collision", icon='MOD_PHYSICS')
@@ -157,79 +238,125 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     row.prop(mod.settings, "use", text="", icon=icon_res, toggle=True)
 
                 # Cloth
-                if obj_info['cloth_modifier']:
+                if (
+                    obj_info['cloth_modifier']
+                    and display_filter in {'ALL', 'CLOTH'}
+                ):
                     mod = obj_info['cloth_modifier']
                     cache = mod.point_cache
-                    is_baked = cache.is_baked
-                    row = box.row(align=True)
-
-                    label_text = "Cloth"
-                    if props.show_modifier_frame_range:
-                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
-                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
-
-                    row.prop(mod, "show_viewport", text="")
-                    row.prop(mod, "show_render", text="")
-
-                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
-                    bake_op.obj_name = obj_name
-                    bake_op.modifier_type = 'CLOTH'
-
-                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    clear_op.obj_name = obj_name
-                    clear_op.modifier_type = 'CLOTH'
+                    self.draw_cache_row(
+                        box,
+                        props,
+                        obj_name,
+                        mod,
+                        cache,
+                        "Cloth",
+                        'CLOTH'
+                    )
 
                 # Soft Body
-                if obj_info['softbody_modifier']:
+                if (
+                    obj_info['softbody_modifier']
+                    and display_filter in {'ALL', 'SOFT_BODY'}
+                ):
                     mod = obj_info['softbody_modifier']
                     cache = mod.point_cache
-                    is_baked = cache.is_baked
-                    row = box.row(align=True)
-
-                    label_text = "Soft Body"
-                    if props.show_modifier_frame_range:
-                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
-                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
-
-                    row.prop(mod, "show_viewport", text="")
-                    row.prop(mod, "show_render", text="")
-
-                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
-                    bake_op.obj_name = obj_name
-                    bake_op.modifier_type = 'SOFT_BODY'
-
-                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    clear_op.obj_name = obj_name
-                    clear_op.modifier_type = 'SOFT_BODY'
+                    self.draw_cache_row(
+                        box,
+                        props,
+                        obj_name,
+                        mod,
+                        cache,
+                        "Soft Body",
+                        'SOFT_BODY'
+                    )
 
                 # Particle
-                for particle_modifier in obj_info['particle_modifier']:
+                particle_modifiers = (
+                    obj_info['particle_modifier']
+                    if display_filter in {'ALL', 'PARTICLE_SYSTEM'}
+                    else []
+                )
+                for particle_modifier in particle_modifiers:
                     ps = particle_modifier.particle_system
                     cache = ps.point_cache
-                    is_baked = cache.is_baked
-                    row = box.row(align=True)
-
-                    label_text = ps.name
-                    if props.show_modifier_frame_range:
-                        label_text += f" ({cache.frame_start}~{cache.frame_end})"
-                    row.label(text=label_text, icon='CHECKMARK' if is_baked else 'CANCEL')
-
-                    row.prop(particle_modifier, "show_viewport", text="")
-                    row.prop(particle_modifier, "show_render", text="")
-
-                    bake_op = row.operator("script.bake_single_cache", text="Bake", icon='RENDER_ANIMATION')
-                    bake_op.obj_name = obj_name
-                    bake_op.modifier_type = 'PARTICLE_SYSTEM'
-                    bake_op.particle_system_name = ps.name
-
-                    clear_op = row.operator("script.clear_single_cache", text="Clear", icon='X')
-                    clear_op.obj_name = obj_name
-                    clear_op.modifier_type = 'PARTICLE_SYSTEM'
-                    clear_op.particle_system_name = ps.name
+                    self.draw_cache_row(
+                        box,
+                        props,
+                        obj_name,
+                        particle_modifier,
+                        cache,
+                        ps.name,
+                        'PARTICLE_SYSTEM',
+                        ps.name
+                    )
         else:
-            layout.label(text="No Physics objects found.")
+            layout.label(text="No matching physics objects found.")
 
-    def get_physics_objects_info(self):
+    @staticmethod
+    def draw_cache_row(
+        box,
+        props,
+        obj_name,
+        modifier,
+        cache,
+        label,
+        modifier_type,
+        particle_system_name=""
+    ):
+        row = box.row(align=True)
+        label_text = label
+        if props.show_modifier_frame_range:
+            label_text += f" ({cache.frame_start}~{cache.frame_end})"
+        row.label(
+            text=label_text,
+            icon='CHECKMARK' if cache.is_baked else 'CANCEL'
+        )
+
+        row.prop(modifier, "show_viewport", text="")
+        row.prop(modifier, "show_render", text="")
+
+        bake_op = row.operator(
+            "script.bake_single_cache",
+            text="Bake",
+            icon='RENDER_ANIMATION'
+        )
+        bake_op.obj_name = obj_name
+        bake_op.modifier_type = modifier_type
+        bake_op.particle_system_name = particle_system_name
+
+        clear_op = row.operator(
+            "script.clear_single_cache",
+            text="Clear",
+            icon='X'
+        )
+        clear_op.obj_name = obj_name
+        clear_op.modifier_type = modifier_type
+        clear_op.particle_system_name = particle_system_name
+
+    @staticmethod
+    def matches_physics_filter(obj_info, status_filter):
+        return (
+            status_filter == 'ALL'
+            or (
+                status_filter == 'CLOTH'
+                and obj_info['cloth_modifier']
+            )
+            or (
+                status_filter == 'SOFT_BODY'
+                and obj_info['softbody_modifier']
+            )
+            or (
+                status_filter == 'PARTICLE_SYSTEM'
+                and obj_info['particle_modifier']
+            )
+            or (
+                status_filter == 'COLLISION'
+                and obj_info['collision_modifier']
+            )
+        )
+
+    def get_physics_objects_info(self, status_filter='ALL'):
         physics_objects_info = []
         for obj in bpy.data.objects:
             if obj.type == 'MESH' and obj.data:
@@ -248,15 +375,19 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                     elif modifier.type == 'COLLISION':
                         collision_mod = modifier
 
-                if any([cloth_mod, softbody_mod, collision_mod, particle_mods]):
-                    physics_objects_info.append({
-                        'object': obj,
-                        'cloth_modifier': cloth_mod,
-                        'softbody_modifier': softbody_mod,
-                        'collision_modifier': collision_mod,
-                        'particle_modifier': particle_mods,
-                    })
-        return physics_objects_info
+                obj_info = {
+                    'object': obj,
+                    'cloth_modifier': cloth_mod,
+                    'softbody_modifier': softbody_mod,
+                    'collision_modifier': collision_mod,
+                    'particle_modifier': particle_mods,
+                }
+                if self.matches_physics_filter(obj_info, status_filter):
+                    physics_objects_info.append(obj_info)
+        return sorted(
+            physics_objects_info,
+            key=lambda obj_info: obj_info['object'].name.casefold()
+        )
 
 
 # ─────────────────────────────────────────────

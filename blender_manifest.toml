@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "bake_manager_tool"
-version = "1.5.0"
+version = "1.6.0"
 name = "Bake Manager Tool"
 tagline = "Physics cache management and bake automation"
 maintainer = "hyeffect55 <hyeffect55@gmail.com>"
