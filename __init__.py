@@ -201,24 +201,19 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
                 row = box.row(align=True)
                 row.label(text=f"Object: {obj_name}", icon='OBJECT_DATA')
 
-                # --- Added Viewport/Render Toggle Icons ---
                 # Viewport visibility toggle
-                icon_view = 'HIDE_OFF' if not obj.hide_viewport else 'HIDE_ON'
                 row.prop(
                     obj,
                     "hide_viewport",
                     text="",
-                    icon=icon_view,
                     toggle=True
                 )
 
                 # Render visibility toggle
-                icon_render = 'RESTRICT_RENDER_OFF' if not obj.hide_render else 'RESTRICT_RENDER_ON'
                 row.prop(
                     obj,
                     "hide_render",
                     text="",
-                    icon=icon_render,
                     toggle=True
                 )
 
