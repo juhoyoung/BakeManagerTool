@@ -337,7 +337,15 @@ class VIEW3D_PT_CacheBakeStatusPanel(MainPanel, Panel):
     @staticmethod
     def matches_physics_filter(obj_info, status_filter):
         return (
-            status_filter == 'ALL'
+            (
+                status_filter == 'ALL'
+                and any((
+                    obj_info['cloth_modifier'],
+                    obj_info['softbody_modifier'],
+                    obj_info['particle_modifier'],
+                    obj_info['collision_modifier'],
+                ))
+            )
             or (
                 status_filter == 'CLOTH'
                 and obj_info['cloth_modifier']
